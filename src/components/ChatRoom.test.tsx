@@ -1,6 +1,6 @@
 import {render, screen} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import ChatRoom from './ChatRoom'
 import {sendMessage} from '../services/api'
 import type {Message, Session, Topic} from '../types'
@@ -8,6 +8,27 @@ import type {Message, Session, Topic} from '../types'
 vi.mock('../services/api', () => ({
   sendMessage: vi.fn(),
 }))
+
+class MockAudio {
+  static instances: MockAudio[] = []
+  src: string
+  play = vi.fn()
+  pause = vi.fn()
+  private listeners: Record<string, () => void> = {}
+
+  constructor(src: string) {
+    this.src = src
+    MockAudio.instances.push(this)
+  }
+
+  addEventListener(event: string, handler: () => void) {
+    this.listeners[event] = handler
+  }
+
+  emit(event: string) {
+    this.listeners[event]?.()
+  }
+}
 
 const topic: Topic = {
   id: 'topic-1',
@@ -23,9 +44,30 @@ const session: Session = {
   created_at: '2026-08-16T00:00:00Z',
 }
 
+async function sendAndResolveWith(user: ReturnType<typeof userEvent.setup>, reply: Message) {
+  let resolveSendMessage: (message: Message) => void = () => {}
+  vi.mocked(sendMessage).mockReturnValue(
+    new Promise((resolve) => {
+      resolveSendMessage = resolve
+    }),
+  )
+
+  await user.type(screen.getByLabelText('Message'), 'Hello there')
+  await user.click(screen.getByRole('button', {name: 'Send'}))
+  resolveSendMessage(reply)
+
+  return screen.findByText(reply.content)
+}
+
 describe('ChatRoom', () => {
   beforeEach(() => {
     vi.mocked(sendMessage).mockReset()
+    MockAudio.instances = []
+    vi.stubGlobal('Audio', MockAudio)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('renders the active topic and session ID', () => {
@@ -74,5 +116,68 @@ describe('ChatRoom', () => {
 
     expect(await screen.findByText('Hi! What would you like to order?')).toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('does not show a play button for a tutor reply without audio', async () => {
+    const user = userEvent.setup()
+    render(<ChatRoom topic={topic} session={session} onBack={vi.fn()} />)
+
+    await sendAndResolveWith(user, {
+      id: 'message-1',
+      session_id: 'session-1',
+      role: 'assistant',
+      content: 'No audio here',
+      created_at: '2026-08-16T00:00:01Z',
+    })
+
+    expect(screen.queryByText('🔊 Listen')).not.toBeInTheDocument()
+  })
+
+  it('shows a play button for a tutor reply with audio and toggles playback on click', async () => {
+    const user = userEvent.setup()
+    render(<ChatRoom topic={topic} session={session} onBack={vi.fn()} />)
+
+    await sendAndResolveWith(user, {
+      id: 'message-1',
+      session_id: 'session-1',
+      role: 'assistant',
+      content: 'Hi! What would you like to order?',
+      audio_url: 'https://example.com/audio.mp3',
+      created_at: '2026-08-16T00:00:01Z',
+    })
+
+    const playButton = await screen.findByText('🔊 Listen')
+    await user.click(playButton)
+
+    expect(MockAudio.instances).toHaveLength(1)
+    expect(MockAudio.instances[0].src).toBe('https://example.com/audio.mp3')
+    expect(MockAudio.instances[0].play).toHaveBeenCalledOnce()
+    expect(await screen.findByText('⏸️ Playing...')).toBeInTheDocument()
+
+    await user.click(screen.getByText('⏸️ Playing...'))
+
+    expect(MockAudio.instances[0].pause).toHaveBeenCalledOnce()
+    expect(await screen.findByText('🔊 Listen')).toBeInTheDocument()
+  })
+
+  it('resets to the play state when audio playback ends naturally', async () => {
+    const user = userEvent.setup()
+    render(<ChatRoom topic={topic} session={session} onBack={vi.fn()} />)
+
+    await sendAndResolveWith(user, {
+      id: 'message-1',
+      session_id: 'session-1',
+      role: 'assistant',
+      content: 'Hi! What would you like to order?',
+      audio_url: 'https://example.com/audio.mp3',
+      created_at: '2026-08-16T00:00:01Z',
+    })
+
+    await user.click(await screen.findByText('🔊 Listen'))
+    expect(await screen.findByText('⏸️ Playing...')).toBeInTheDocument()
+
+    MockAudio.instances[0].emit('ended')
+
+    expect(await screen.findByText('🔊 Listen')).toBeInTheDocument()
   })
 })

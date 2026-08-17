@@ -1,4 +1,4 @@
-import {useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import type {FormEvent} from 'react'
 import {sendMessage} from '../services/api'
 import type {Message, Session, Topic} from '../types'
@@ -7,6 +7,46 @@ type ChatRoomProps = {
   topic: Topic
   session: Session
   onBack: () => void
+}
+
+type AudioPlayButtonProps = {
+  audioUrl: string
+}
+
+function AudioPlayButton({audioUrl}: AudioPlayButtonProps) {
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause()
+    }
+  }, [])
+
+  const handleClick = () => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio(audioUrl)
+      audioRef.current.addEventListener('ended', () => setPlaying(false))
+    }
+
+    if (playing) {
+      audioRef.current.pause()
+      setPlaying(false)
+    } else {
+      audioRef.current.play()
+      setPlaying(true)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="w-fit text-xs font-medium text-neutral-600 hover:underline dark:text-neutral-300"
+    >
+      {playing ? '⏸️ Playing...' : '🔊 Listen'}
+    </button>
+  )
 }
 
 function ChatRoom({topic, session, onBack}: ChatRoomProps) {
@@ -67,13 +107,16 @@ function ChatRoom({topic, session, onBack}: ChatRoomProps) {
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+            className={`flex max-w-[80%] flex-col gap-1 rounded-2xl px-4 py-2 text-sm ${
               message.role === 'user'
                 ? 'self-end bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
                 : 'self-start bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
             }`}
           >
             {message.content}
+            {message.role === 'assistant' && message.audio_url && (
+              <AudioPlayButton audioUrl={message.audio_url} />
+            )}
           </div>
         ))}
         {loading && (
