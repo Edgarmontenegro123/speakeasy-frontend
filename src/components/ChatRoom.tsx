@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react'
 import type {FormEvent} from 'react'
-import {sendMessage} from '../services/api'
+import {useAudioRecorder} from '../hooks/useAudioRecorder'
+import {sendAudioMessage, sendMessage} from '../services/api'
 import type {Message, Session, Topic} from '../types'
 
 type ChatRoomProps = {
@@ -53,6 +54,22 @@ function ChatRoom({topic, session, onBack}: ChatRoomProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const {status: recorderStatus, startRecording, stopRecording} = useAudioRecorder()
+  const recording = recorderStatus === 'recording'
+
+  const submitMessage = async (userMessage: Message, sendReply: () => Promise<Message>) => {
+    setMessages((current) => [...current, userMessage])
+    setLoading(true)
+
+    try {
+      const reply = await sendReply()
+      setMessages((current) => [...current, reply])
+    } catch {
+      // The tutor reply failed to arrive; the user's message stays in the history so they can retry.
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -68,17 +85,28 @@ function ChatRoom({topic, session, onBack}: ChatRoomProps) {
       created_at: new Date().toISOString(),
     }
 
-    setMessages((current) => [...current, userMessage])
     setInput('')
-    setLoading(true)
+    await submitMessage(userMessage, () => sendMessage(session.id, content))
+  }
 
-    try {
-      const reply = await sendMessage(session.id, content)
-      setMessages((current) => [...current, reply])
-    } catch {
-      // The tutor reply failed to arrive; the user's message stays in the history so they can retry.
-    } finally {
-      setLoading(false)
+  const handleToggleRecording = async () => {
+    if (loading) return
+
+    if (recording) {
+      const audio = await stopRecording()
+      if (!audio) return
+
+      const userMessage: Message = {
+        id: `local-${Date.now()}`,
+        session_id: session.id,
+        role: 'user',
+        content: '🎤 Voice message',
+        created_at: new Date().toISOString(),
+      }
+
+      await submitMessage(userMessage, () => sendAudioMessage(session.id, audio))
+    } else {
+      await startRecording()
     }
   }
 
@@ -139,6 +167,18 @@ function ChatRoom({topic, session, onBack}: ChatRoomProps) {
           aria-label="Message"
           className="flex-1 rounded-full border border-neutral-200 px-4 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-800 dark:text-neutral-100"
         />
+        <button
+          type="button"
+          onClick={handleToggleRecording}
+          disabled={loading}
+          className={`rounded-full px-4 py-2 text-sm font-medium disabled:opacity-50 ${
+            recording
+              ? 'bg-red-600 text-white'
+              : 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
+          }`}
+        >
+          {recording ? '⏹️ Stop' : '🎙️ Record'}
+        </button>
         <button
           type="submit"
           disabled={loading || !input.trim()}

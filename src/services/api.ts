@@ -53,3 +53,19 @@ export async function sendMessage(sessionId: string, content: string): Promise<M
 
   return response.json()
 }
+
+export async function sendAudioMessage(sessionId: string, audio: Blob): Promise<Message> {
+  const formData = new FormData()
+  formData.append('audio', audio, 'recording.webm')
+
+  const response = await fetch(`${API_URL}/sessions/${sessionId}/messages`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to send audio message with status ${response.status}`)
+  }
+
+  return response.json()
+}

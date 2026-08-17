@@ -2,11 +2,17 @@ import {render, screen} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import ChatRoom from './ChatRoom'
-import {sendMessage} from '../services/api'
+import {useAudioRecorder} from '../hooks/useAudioRecorder'
+import {sendAudioMessage, sendMessage} from '../services/api'
 import type {Message, Session, Topic} from '../types'
 
 vi.mock('../services/api', () => ({
   sendMessage: vi.fn(),
+  sendAudioMessage: vi.fn(),
+}))
+
+vi.mock('../hooks/useAudioRecorder', () => ({
+  useAudioRecorder: vi.fn(),
 }))
 
 class MockAudio {
@@ -62,6 +68,12 @@ async function sendAndResolveWith(user: ReturnType<typeof userEvent.setup>, repl
 describe('ChatRoom', () => {
   beforeEach(() => {
     vi.mocked(sendMessage).mockReset()
+    vi.mocked(sendAudioMessage).mockReset()
+    vi.mocked(useAudioRecorder).mockReturnValue({
+      status: 'idle',
+      startRecording: vi.fn(),
+      stopRecording: vi.fn(),
+    })
     MockAudio.instances = []
     vi.stubGlobal('Audio', MockAudio)
   })
@@ -179,5 +191,48 @@ describe('ChatRoom', () => {
     MockAudio.instances[0].emit('ended')
 
     expect(await screen.findByText('🔊 Listen')).toBeInTheDocument()
+  })
+
+  it('starts recording when the mic button is clicked while idle', async () => {
+    const startRecording = vi.fn()
+    vi.mocked(useAudioRecorder).mockReturnValue({
+      status: 'idle',
+      startRecording,
+      stopRecording: vi.fn(),
+    })
+
+    const user = userEvent.setup()
+    render(<ChatRoom topic={topic} session={session} onBack={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', {name: '🎙️ Record'}))
+
+    expect(startRecording).toHaveBeenCalledOnce()
+  })
+
+  it('stops recording and sends the captured audio as a voice message', async () => {
+    const audioBlob = new Blob(['audio-data'], {type: 'audio/webm'})
+    const stopRecording = vi.fn().mockResolvedValue(audioBlob)
+    vi.mocked(useAudioRecorder).mockReturnValue({
+      status: 'recording',
+      startRecording: vi.fn(),
+      stopRecording,
+    })
+    vi.mocked(sendAudioMessage).mockResolvedValue({
+      id: 'message-2',
+      session_id: 'session-1',
+      role: 'assistant',
+      content: 'Nice, tell me more!',
+      created_at: '2026-08-17T00:00:01Z',
+    })
+
+    const user = userEvent.setup()
+    render(<ChatRoom topic={topic} session={session} onBack={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', {name: '⏹️ Stop'}))
+
+    expect(stopRecording).toHaveBeenCalledOnce()
+    expect(await screen.findByText('🎤 Voice message')).toBeInTheDocument()
+    expect(sendAudioMessage).toHaveBeenCalledWith('session-1', audioBlob)
+    expect(await screen.findByText('Nice, tell me more!')).toBeInTheDocument()
   })
 })
