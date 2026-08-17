@@ -9,6 +9,7 @@ vi.mock('./services/api', () => ({
   getHealthStatus: vi.fn(),
   getTopics: vi.fn(),
   createSession: vi.fn(),
+  sendMessage: vi.fn(),
 }))
 
 const topics: Topic[] = [
@@ -51,9 +52,9 @@ describe('App', () => {
     vi.mocked(getHealthStatus).mockResolvedValue({ok: true})
     vi.mocked(createSession).mockResolvedValue({
       id: 'session-1',
-      topicId: 'topic-1',
+      topic_id: 'topic-1',
       status: 'active',
-      createdAt: '2026-08-16T00:00:00Z',
+      created_at: '2026-08-16T00:00:00Z',
     })
 
     const user = userEvent.setup()

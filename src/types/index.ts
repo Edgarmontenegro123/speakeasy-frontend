@@ -11,17 +11,18 @@ export type SessionStatus = 'active' | 'completed'
 
 export type Session = {
   id: string
-  topicId: string
+  topic_id: string
   status: SessionStatus
-  createdAt: string
+  created_at: string
 }
 
 export type MessageRole = 'user' | 'assistant'
 
 export type Message = {
   id: string
-  sessionId: string
+  session_id: string
   role: MessageRole
   content: string
-  createdAt: string
+  audio_url?: string
+  created_at: string
 }

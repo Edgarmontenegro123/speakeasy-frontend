@@ -1,4 +1,5 @@
 import {useEffect, useState} from 'react'
+import ChatRoom from './components/ChatRoom'
 import TopicSelector from './components/TopicSelector'
 import {createSession, getHealthStatus, getTopics} from './services/api'
 import type {Session, Topic} from './types'
@@ -41,6 +42,11 @@ function App() {
     setSession(newSession)
   }
 
+  const handleBackToTopics = () => {
+    setSession(null)
+    setActiveTopic(null)
+  }
+
   const statusLabel = {
     checking: 'Checking backend…',
     connected: 'Backend connected',
@@ -72,14 +78,7 @@ function App() {
       </div>
 
       {session && activeTopic ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-neutral-200 p-6 text-center dark:border-neutral-800">
-          <h2 className="text-xl font-medium text-neutral-900 dark:text-neutral-100">
-            {activeTopic.title}
-          </h2>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Session ID: {session.id}
-          </p>
-        </div>
+        <ChatRoom topic={activeTopic} session={session} onBack={handleBackToTopics} />
       ) : (
         <TopicSelector topics={topics} onSelect={handleSelectTopic} />
       )}
