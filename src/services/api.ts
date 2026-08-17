@@ -54,7 +54,12 @@ export async function sendMessage(sessionId: string, content: string): Promise<M
   return response.json()
 }
 
-export async function sendAudioMessage(sessionId: string, audio: Blob): Promise<Message> {
+export type SendAudioMessageResult = {
+  transcript: string
+  reply: Message
+}
+
+export async function sendAudioMessage(sessionId: string, audio: Blob): Promise<SendAudioMessageResult> {
   const formData = new FormData()
   formData.append('audio', audio, 'recording.webm')
 

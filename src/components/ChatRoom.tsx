@@ -57,13 +57,25 @@ function ChatRoom({topic, session, onBack}: ChatRoomProps) {
   const {status: recorderStatus, startRecording, stopRecording} = useAudioRecorder()
   const recording = recorderStatus === 'recording'
 
-  const submitMessage = async (userMessage: Message, sendReply: () => Promise<Message>) => {
+  const submitMessage = async (
+    userMessage: Message,
+    sendReply: () => Promise<{transcript?: string; reply: Message}>,
+  ) => {
     setMessages((current) => [...current, userMessage])
     setLoading(true)
 
     try {
-      const reply = await sendReply()
-      setMessages((current) => [...current, reply])
+      const {transcript, reply} = await sendReply()
+
+      setMessages((current) => {
+        const withTranscript = transcript
+          ? current.map((message) =>
+              message.id === userMessage.id ? {...message, content: transcript} : message,
+            )
+          : current
+
+        return [...withTranscript, reply]
+      })
     } catch {
       // The tutor reply failed to arrive; the user's message stays in the history so they can retry.
     } finally {
@@ -86,7 +98,7 @@ function ChatRoom({topic, session, onBack}: ChatRoomProps) {
     }
 
     setInput('')
-    await submitMessage(userMessage, () => sendMessage(session.id, content))
+    await submitMessage(userMessage, async () => ({reply: await sendMessage(session.id, content)}))
   }
 
   const handleToggleRecording = async () => {
@@ -100,7 +112,7 @@ function ChatRoom({topic, session, onBack}: ChatRoomProps) {
         id: `local-${Date.now()}`,
         session_id: session.id,
         role: 'user',
-        content: '🎤 Voice message',
+        content: '🎤 Transcribing…',
         created_at: new Date().toISOString(),
       }
 

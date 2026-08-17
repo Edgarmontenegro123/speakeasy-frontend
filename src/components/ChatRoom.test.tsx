@@ -209,7 +209,7 @@ describe('ChatRoom', () => {
     expect(startRecording).toHaveBeenCalledOnce()
   })
 
-  it('stops recording and sends the captured audio as a voice message', async () => {
+  it('stops recording, uploads the audio, then shows the transcript and the tutor reply', async () => {
     const audioBlob = new Blob(['audio-data'], {type: 'audio/webm'})
     const stopRecording = vi.fn().mockResolvedValue(audioBlob)
     vi.mocked(useAudioRecorder).mockReturnValue({
@@ -217,13 +217,13 @@ describe('ChatRoom', () => {
       startRecording: vi.fn(),
       stopRecording,
     })
-    vi.mocked(sendAudioMessage).mockResolvedValue({
-      id: 'message-2',
-      session_id: 'session-1',
-      role: 'assistant',
-      content: 'Nice, tell me more!',
-      created_at: '2026-08-17T00:00:01Z',
-    })
+
+    let resolveSendAudioMessage: (result: {transcript: string; reply: Message}) => void = () => {}
+    vi.mocked(sendAudioMessage).mockReturnValue(
+      new Promise((resolve) => {
+        resolveSendAudioMessage = resolve
+      }),
+    )
 
     const user = userEvent.setup()
     render(<ChatRoom topic={topic} session={session} onBack={vi.fn()} />)
@@ -231,8 +231,24 @@ describe('ChatRoom', () => {
     await user.click(screen.getByRole('button', {name: '⏹️ Stop'}))
 
     expect(stopRecording).toHaveBeenCalledOnce()
-    expect(await screen.findByText('🎤 Voice message')).toBeInTheDocument()
+    expect(await screen.findByText('🎤 Transcribing…')).toBeInTheDocument()
     expect(sendAudioMessage).toHaveBeenCalledWith('session-1', audioBlob)
+
+    resolveSendAudioMessage({
+      transcript: 'Can I get a flat white, please?',
+      reply: {
+        id: 'message-2',
+        session_id: 'session-1',
+        role: 'assistant',
+        content: 'Nice, tell me more!',
+        audio_url: 'https://example.com/reply.mp3',
+        created_at: '2026-08-17T00:00:01Z',
+      },
+    })
+
+    expect(await screen.findByText('Can I get a flat white, please?')).toBeInTheDocument()
+    expect(screen.queryByText('🎤 Transcribing…')).not.toBeInTheDocument()
     expect(await screen.findByText('Nice, tell me more!')).toBeInTheDocument()
+    expect(screen.getByText('🔊 Listen')).toBeInTheDocument()
   })
 })
